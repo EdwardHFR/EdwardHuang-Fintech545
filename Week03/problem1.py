@@ -64,7 +64,62 @@ def exwCovMat(data, weights_vector):
     
     return w_cov_mat
 
-# set up lists of weights, cumulative weights, and set up lamda
+# set up lists of weights, cumulative weights, and set up lamda equal to 0.5
+weights = []
+cum_weights = []
+lamda = 0.5
+
+# call both defined functions to get the result
+populateWeights(dates,weights, cum_weights, lamda)
+
+# reverse w so that it corresponds to the ascending order of dates used in the DailyReturn.csv
+rev_weights = weights[::-1]
+    
+covariance_matrix = exwCovMat(stock_data, rev_weights)
+
+# we are now using PCA - simply calculate eigenvalues here - to show how many percent of variance could be explained by first k eigenvalues
+# calculate the eigenvalues and eigenvectors of derived matrix, and sort eigenvalues from largest to smallest
+e_val, e_vec = eigh(covariance_matrix)
+a_sorted_e_val = np.sort(e_val)
+d_sorted_e_val = a_sorted_e_val[::-1]
+
+# we assume all negative eigenvalues derived are zero, since they are effectively zero (larger than -1e-8)
+assert np.amin(d_sorted_e_val) > -1e-8
+d_sorted_e_val[d_sorted_e_val<0] = 0
+
+# calculate the sum of all eigenvalues
+e_sum = sum(d_sorted_e_val)
+
+# remove all eigenvalues that too small - in this case, we set the threshold to be 1e-8
+sub_d_sorted_e_val = d_sorted_e_val[d_sorted_e_val> 1e-8]
+
+# calculate the percent of variance explained by the first k eigenvalues, and store them into a preset list
+fifty_individual_percent = []
+fifty_total_percent = []
+sum_percent = 0
+for i in range(len(sub_d_sorted_e_val)):
+    each_percent = sub_d_sorted_e_val[i] / e_sum
+    fifty_individual_percent.append(each_percent)
+    sum_percent += each_percent
+    fifty_total_percent.append(sum_percent)
+
+# plot the cumulative variance explained by each eigenvalue; note: when there are a lot of eigenvalues chosen, do not implement "plt.xticks(range(len(sub_d_sorted_e_val)))" so that the x-axis of the graph would not be crowded
+plt.bar(range(len(sub_d_sorted_e_val)), fifty_individual_percent)
+plt.xlabel("Index of Each Eigenvalue")
+plt.ylabel("Percent of Variance Explained")
+plt.xticks(range(len(sub_d_sorted_e_val)))
+
+# plot the cumulative variance explained by first k eigenvalues; note: when there are a lot of eigenvalues chosen, do not implement "plt.xticks(range(len(sub_d_sorted_e_val)))" so that the x-axis of the graph would not be crowded
+plt.plot(range(1,(len(sub_d_sorted_e_val)+1)),fifty_total_percent)
+plt.xlabel("First K Eigenvalues Chosen")
+plt.ylabel("Percent of Variance Explained")
+plt.xticks(range(1,(len(sub_d_sorted_e_val)+1)))
+
+
+
+
+
+# set up lists of weights, cumulative weights, and set up lamda equal to 0.94
 weights = []
 cum_weights = []
 lamda = 0.94
@@ -94,23 +149,78 @@ e_sum = sum(d_sorted_e_val)
 sub_d_sorted_e_val = d_sorted_e_val[d_sorted_e_val> 1e-8]
 
 # calculate the percent of variance explained by the first k eigenvalues, and store them into a preset list
-individual_percent = []
-total_percent = []
+ninfour_individual_percent = []
+ninfour_total_percent = []
 sum_percent = 0
 for i in range(len(sub_d_sorted_e_val)):
     each_percent = sub_d_sorted_e_val[i] / e_sum
-    individual_percent.append(each_percent)
+    ninfour_individual_percent.append(each_percent)
     sum_percent += each_percent
-    total_percent.append(sum_percent)
+    ninfour_total_percent.append(sum_percent)
 
 # plot the cumulative variance explained by each eigenvalue; note: when there are a lot of eigenvalues chosen, do not implement "plt.xticks(range(len(sub_d_sorted_e_val)))" so that the x-axis of the graph would not be crowded
-plt.bar(range(len(sub_d_sorted_e_val)), individual_percent)
+plt.bar(range(len(sub_d_sorted_e_val)), ninfour_individual_percent)
 plt.xlabel("Index of Each Eigenvalue")
 plt.ylabel("Percent of Variance Explained")
 plt.xticks(range(len(sub_d_sorted_e_val)))
 
 # plot the cumulative variance explained by first k eigenvalues; note: when there are a lot of eigenvalues chosen, do not implement "plt.xticks(range(len(sub_d_sorted_e_val)))" so that the x-axis of the graph would not be crowded
-plt.plot(range(1,(len(sub_d_sorted_e_val)+1)),total_percent)
+plt.plot(range(1,(len(sub_d_sorted_e_val)+1)),ninfour_total_percent)
+plt.xlabel("First K Eigenvalues Chosen")
+plt.ylabel("Percent of Variance Explained")
+plt.xticks(range(1,(len(sub_d_sorted_e_val)+1)))
+
+
+
+
+
+# set up lists of weights, cumulative weights, and set up lamda equal to 0.97
+weights = []
+cum_weights = []
+lamda = 0.97
+
+# call both defined functions to get the result
+populateWeights(dates,weights, cum_weights, lamda)
+
+# reverse w so that it corresponds to the ascending order of dates used in the DailyReturn.csv
+rev_weights = weights[::-1]
+    
+covariance_matrix = exwCovMat(stock_data, rev_weights)
+
+# we are now using PCA - simply calculate eigenvalues here - to show how many percent of variance could be explained by first k eigenvalues
+# calculate the eigenvalues and eigenvectors of derived matrix, and sort eigenvalues from largest to smallest
+e_val, e_vec = eigh(covariance_matrix)
+a_sorted_e_val = np.sort(e_val)
+d_sorted_e_val = a_sorted_e_val[::-1]
+
+# we assume all negative eigenvalues derived are zero, since they are effectively zero (larger than -1e-8)
+assert np.amin(d_sorted_e_val) > -1e-8
+d_sorted_e_val[d_sorted_e_val<0] = 0
+
+# calculate the sum of all eigenvalues
+e_sum = sum(d_sorted_e_val)
+
+# remove all eigenvalues that too small - in this case, we set the threshold to be 1e-8
+sub_d_sorted_e_val = d_sorted_e_val[d_sorted_e_val> 1e-8]
+
+# calculate the percent of variance explained by the first k eigenvalues, and store them into a preset list
+ninsev_individual_percent = []
+ninsev_total_percent = []
+sum_percent = 0
+for i in range(len(sub_d_sorted_e_val)):
+    each_percent = sub_d_sorted_e_val[i] / e_sum
+    ninsev_individual_percent.append(each_percent)
+    sum_percent += each_percent
+    ninsev_total_percent.append(sum_percent)
+
+# plot the cumulative variance explained by each eigenvalue; note: when there are a lot of eigenvalues chosen, do not implement "plt.xticks(range(len(sub_d_sorted_e_val)))" so that the x-axis of the graph would not be crowded
+plt.bar(range(len(sub_d_sorted_e_val)), ninsev_individual_percent)
+plt.xlabel("Index of Each Eigenvalue")
+plt.ylabel("Percent of Variance Explained")
+plt.xticks(range(len(sub_d_sorted_e_val)))
+
+# plot the cumulative variance explained by first k eigenvalues; note: when there are a lot of eigenvalues chosen, do not implement "plt.xticks(range(len(sub_d_sorted_e_val)))" so that the x-axis of the graph would not be crowded
+plt.plot(range(1,(len(sub_d_sorted_e_val)+1)),ninsev_total_percent)
 plt.xlabel("First K Eigenvalues Chosen")
 plt.ylabel("Percent of Variance Explained")
 plt.xticks(range(1,(len(sub_d_sorted_e_val)+1)))
