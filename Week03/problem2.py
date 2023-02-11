@@ -3,6 +3,7 @@ from numpy.linalg import eigh
 import sys
 import itertools
 import time
+import math
 
 # generate a N * N non-psd correlation matrix
 N = 1000
@@ -12,6 +13,56 @@ for i in range(N):
 n_psd[0][1] = 0.7357
 n_psd[1][0] = 0.7357
 
+# define a function following Cholesky algorithm
+def chol_psd_forpsd(root,a):
+    n = a.shape
+    # initialize root matrix with zeros
+    root = np.zeros(n)
+    
+    for j in range(n[0]):
+        s = 0
+        # if we are not on the first column, calculate the dot product of the preceeding row values
+        if j > 1:
+            s = np.dot(root[j,:(j-1)], root[j,:(j-1)])
+            
+        # working on diagonal elements
+        temp = a[j,j] - s
+        if temp <= 0 and temp >= -1e-8:
+            temp = 0
+        root[j,j] = math.sqrt(temp)
+        
+        # check for zero eigenvalues; set columns to zero if we have one(s)
+        if root[j,j] == 0:
+            root[j,(j+1):] = 0
+        else:
+            ir = 1/root[j,j]
+            for i in range((j+1),n[0]):
+                s = np.dot(root[i,:(j-1)], root[j,:(j-1)])
+                root[i,j] = (a[i,j] - s) * ir
+    return root
+                
+def chol_psd_forpd(root,a):
+    n = a.shape
+    # initialize root matrix with zeros
+    root = np.zeros(n)
+    
+    for j in range(n[0]):
+        s = 0
+        # if we are not on the first column, calculate the dot product of the preceeding row values
+        if j > 1:
+            s = np.dot(root[j,:(j-1)], root[j,:(j-1)])
+            
+        # working on diagonal elements
+        temp = a[j,j] - s
+        root[j,j] = math.sqrt(temp)
+        
+        ir = 1/root[j,j]
+        # update off diagonal rows of the column
+        for i in range((j+1),n[0]):
+            s = np.dot(root[i,:(j-1)], root[j,:(j-1)])
+            root[i,j] = (a[i,j] - s) * ir
+    return root            
+    
 # define a function calculating PSD via near_PSD
 def near_PSD(matrix, epsilon=0.0):
     # check if the matrix is a correlation matrix - if all numbers on the diagonal are one
