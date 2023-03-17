@@ -6,6 +6,7 @@ from numpy.linalg import eigh
 import itertools
 from scipy.stats import norm, t
 import statsmodels.api as sm
+from scipy.optimize import fsolve
 
 #####calculation of covariance matrix#####START
 # define a function to calculate exponential weights
@@ -374,7 +375,7 @@ def cal_ES(x,alpha=0.05):
     idn = math.floor(n)
     VaR = (xs[iup] + xs[idn]) / 2
     ES = xs[0:idn].mean()
-    return -ES
+    return VaR,ES
 #####ES calculation#####END
 
 
@@ -436,3 +437,25 @@ def return_cal(data,method="discrete",datecol="Date"):
         out[vars[i]] = returns.iloc[:, i]
     return out
 #####return calculation#####END
+
+
+
+#####Option Pricing#####START
+# calculate implied volatility
+def implied_vol(underlying, strike, ttm, rf, b, price, type="call"):
+    f = lambda ivol: gbsm(underlying, strike, ttm, rf, b, ivol, type="call") - price
+    result = fsolve(f,0.5)
+    return result
+    
+# Black Scholes Model
+def gbsm(underlying, strike, ttm, rf, b, ivol, type="call"):
+    d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
+    d2 = d1 - ivol*math.sqrt(ttm)
+
+    if type == "call":
+        return underlying * math.exp((b-rf)*ttm) * norm.cdf(d1) - strike*math.exp(-rf*ttm)*norm.cdf(d2)
+    elif type == "put":
+        return strike*math.exp(-rf*ttm)*norm.cdf(-d2) - underlying*math.exp((b-rf)*ttm)*norm.cdf(-d1)
+    else:
+        print("Invalid type of option")
+#####Option Pricing#####END
