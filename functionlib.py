@@ -6,7 +6,9 @@ from numpy.linalg import eigh
 import itertools
 from scipy.stats import norm, t
 import statsmodels.api as sm
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, minimize
+import inspect
+
 
 #####calculation of covariance matrix#####START
 # define a function to calculate exponential weights
@@ -441,13 +443,19 @@ def return_cal(data,method="discrete",datecol="Date"):
 
 
 #####Option Pricing#####START
-# calculate implied volatility
-def implied_vol(underlying, strike, ttm, rf, b, price, type="call"):
+# calculate implied volatility for GBSM
+def implied_vol_gbsm(underlying, strike, ttm, rf, b, price, type="call"):
     f = lambda ivol: gbsm(underlying, strike, ttm, rf, b, ivol, type="call") - price
     result = fsolve(f,0.5)
     return result
+
+# calculate implied volatility for American options with dividends
+def implied_vol_americandiv(underlying, strike, ttm, rf, divAmts, divTimes, N, price, type="call"):
+    f = lambda ivol: bt_american_div(underlying, strike, ttm, rf, divAmts, divTimes, ivol, N, type="call") - price
+    result = fsolve(f,0.5)
+    return result
     
-# Black Scholes Model
+# Black Scholes Model for European option
 def gbsm(underlying, strike, ttm, rf, b, ivol, type="call"):
     d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
     d2 = d1 - ivol*math.sqrt(ttm)
@@ -458,4 +466,227 @@ def gbsm(underlying, strike, ttm, rf, b, ivol, type="call"):
         return strike*math.exp(-rf*ttm)*norm.cdf(-d2) - underlying*math.exp((b-rf)*ttm)*norm.cdf(-d1)
     else:
         print("Invalid type of option")
+        
+# binomial trees used to price American option with no dividends
+def bt_american(underlying, strike, ttm, rf, b, ivol, N, otype="call"):
+    dt = ttm / N
+    u = math.exp(ivol * math.sqrt(dt))
+    d = 1 / u
+    pu = (math.exp(b * dt) - d) / (u - d)
+    pd = 1.0 - pu
+    df = math.exp(-rf * dt)
+    if otype == "call":
+        z = 1
+    elif otype == "put":
+        z = -1
+
+    def nNodeFunc(n):
+        return int((n + 1) * (n + 2) / 2)
+
+    def idxFunc(i, j):
+        return nNodeFunc(j - 1) + i
+
+    nNodes = nNodeFunc(N)
+    optionValues = [0.0] * nNodes
+
+    for j in range(N, -1, -1):
+        for i in range(j, -1, -1):
+            idx = idxFunc(i, j)
+            price = underlying * u**i * d**(j-i)
+            optionValues[idx] = max(0, z * (price - strike))
+            
+            if j < N:
+                optionValues[idx] = max(optionValues[idx], df*(pu*optionValues[idxFunc(i+1, j+1)] + pd*optionValues[idxFunc(i, j+1)]))
+    
+    return optionValues[0]
+
+# binomial trees used to price American option with dividends
+def bt_american_div(underlying, strike, ttm, rf, divAmts, divTimes, ivol, N, type="call"):
+    if not divAmts or not divTimes or divTimes[0] > N:
+        return bt_american(underlying, strike, ttm, rf, rf, ivol, N, otype=type)
+    
+    dt = ttm / N
+    u = math.exp(ivol * math.sqrt(dt))
+    d = 1 / u
+    pu = (math.exp(rf * dt) - d) / (u - d)
+    pd = 1 - pu
+    df = math.exp(-rf * dt)
+    if type == "call":
+        z = 1
+    elif type == "put":
+        z = -1
+
+    def nNodeFunc(n):
+        return int((n + 1) * (n + 2) / 2)
+
+    def idxFunc(i, j):
+        return nNodeFunc(j - 1) + i
+
+    nDiv = len(divTimes)
+    nNodes = nNodeFunc(divTimes[0])
+
+    optionValues = np.zeros(len(range(nNodes)))
+
+    for j in range(divTimes[0], -1, -1):
+        for i in range(j, -1, -1):
+            idx = idxFunc(i, j)
+            price = underlying * u ** i * d ** (j - i)
+
+            if j < divTimes[0]:
+                # times before the dividend working backward induction
+                optionValues[idx] = max(0, z * (price - strike))
+                optionValues[idx] = max(optionValues[idx], df * (pu * optionValues[idxFunc(i + 1, j + 1)] + pd * optionValues[idxFunc(i, j + 1)]))
+            else:
+                # time of the dividend
+                valNoExercise = bt_american_div(price - divAmts[0], strike, ttm - divTimes[0] * dt, rf, divAmts[1:], [t - divTimes[0] for t in divTimes[1:]], ivol, N - divTimes[0], type=type)
+                valExercise = max(0, z * (price - strike))
+                optionValues[idx] = max(valNoExercise, valExercise)
+
+    return optionValues[0]
 #####Option Pricing#####END
+
+
+
+#####Greeks with Options#####START
+# calculate delta of options with closed-form formulas
+def delta_gbsm(underlying, strike, ttm, rf, b, ivol, type="call"):
+    d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
+
+    if type == "call":
+        return math.exp((b - rf) * ttm) * norm.cdf(d1)
+    elif type == "put":
+        return math.exp((b - rf) * ttm) * (norm.cdf(d1) - 1)
+    else:
+        print("Invalid type of option")
+        
+# calculate Gamma of options with closed-form formulas
+def gamma_gbsm(underlying, strike, ttm, rf, b, ivol):
+    d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
+    result = norm.pdf(d1) * math.exp((b - rf) * ttm) / (underlying * ivol * math.sqrt(ttm))
+    return result
+
+# calculate Vega of options with closed-form formulas
+def vega_gbsm(underlying, strike, ttm, rf, b, ivol):
+    d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
+    result = underlying * norm.pdf(d1) * math.exp((b - rf) * ttm) * math.sqrt(ttm)
+    return result
+
+# calculate Theta of options with closed-form formulas
+def theta_gbsm(underlying, strike, ttm, rf, b, ivol, type="call"):
+    d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
+    d2 = d1 - ivol*math.sqrt(ttm)
+
+    if type == "call":
+        result_call = - underlying * math.exp((b - rf) * ttm) * norm.pdf(d1) * ivol / (2 * math.sqrt(ttm)) - (b - rf) * underlying * math.exp((b - rf) * ttm) * norm.cdf(d1) - rf * strike * math.exp(-rf * ttm) * norm.cdf(d2)
+        return result_call
+    elif type == "put":
+        result_put = - underlying * math.exp((b - rf) * ttm) * norm.pdf(d1) * ivol / (2 * math.sqrt(ttm)) + (b - rf) * underlying * math.exp((b - rf) * ttm) * norm.cdf(-d1) + rf * strike * math.exp(-rf * ttm) * norm.cdf(-d2)
+        return result_put
+    else:
+        print("Invalid type of option")
+
+# calculate Rho of options with closed-form formulas
+def rho_gbsm(underlying, strike, ttm, rf, b, ivol, type="call"):
+    d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
+    d2 = d1 - ivol*math.sqrt(ttm)
+
+    if type == "call":
+        return ttm * strike * math.exp(-rf * ttm) * norm.cdf(d2)
+    elif type == "put":
+        return -ttm * strike * math.exp(-rf * ttm) * norm.cdf(-d2)
+    else:
+        print("Invalid type of option")
+
+# calculate Carry Rho of options with closed-form formulas
+def crho_gbsm(underlying, strike, ttm, rf, b, ivol, type="call"):
+    d1 = (math.log(underlying/strike) + (b+ivol**2/2)*ttm)/(ivol*math.sqrt(ttm))
+    
+    if type == "call":
+        return ttm * underlying * math.exp((b - rf) * ttm) * norm.cdf(d1)
+    elif type == "put":
+        return -ttm * underlying * math.exp((b - rf) * ttm) * norm.cdf(-d1)
+    else:
+        print("Invalid type of option")
+#####Greeks with Options#####END
+
+
+
+#####Partial Derivative#####START
+# define a function to calculate first order derivative with central difference
+def first_order_derivative(func, x, delta=1e-3):
+    return (func(x + delta) - func(x - delta)) / (2 * delta)
+
+# define a function to calculate second order derivative with central difference
+def second_order_derivative(func, x, delta=1e-3):
+    return (func(x + delta) - 2 * func(x) + func(x - delta)) / delta ** 2
+
+# incorporate above functions to calculate partial derivatives of indicated functions and return corresponding partial derivative functions
+def partial_derivative(func, arg_name, delta=1e-3, order=1):
+    arg_names = inspect.signature(func).parameters.keys()
+    derivative_functions = {1: first_order_derivative, 2: second_order_derivative}
+
+    def partial_func(*args, **kwargs):
+        arg_values = dict(zip(arg_names, args))
+        arg_values.update(kwargs)
+        x = arg_values.pop(arg_name)
+
+        def f(xi):
+            arg_values[arg_name] = xi
+            return func(**arg_values)
+
+        return derivative_functions[order](f, x, delta)
+
+    return partial_func
+#####Partial Derivative#####END
+
+
+
+#####Portfolio Optimization#####START
+# calculate minimal risk with target return
+def optimize_risk(covar, expected_r, R):
+    # Define objective function
+    def objective(w):
+        return w @ covar @ w.T
+
+    # Define constraints
+    constraints = [
+        {"type": "eq", "fun": lambda w: np.sum(w) - 1},
+        {"type": "eq", "fun": lambda w: er @ w - R},
+    ]
+
+    # Define bounds
+    bounds = [(0, None), (0, None), (0, None)]
+
+    # Define initial guess
+    x0 = np.array([1/3, 1/3, 1/3])
+
+    # Use minimize function to solve optimization problem
+    result = minimize(objective, x0, method="SLSQP", bounds=bounds, constraints=constraints)
+
+    # Return the objective value (risk) and the portfolio weights
+    return {"risk": result.fun, "weights": result.x, "R": R}
+
+# calculate maximized Sharpe Ratio
+def optimize_Sharpe(covar, expected_r, rf):
+    # Define objective function
+    def negative_Sharpe(w):
+        returns = np.dot(expected_r, w)
+        std = np.sqrt(w @ covar @ w.T)
+        return -(returns - r) / std
+
+    # Define constraints
+    constraints = [
+        {"type": "eq", "fun": lambda w: np.sum(w) - 1}
+    ]
+
+    # Define bounds
+    bounds = [(0, None)] * len(expected_r)
+
+    # Define initial guess
+    x0 = np.full(len(expected_r), 1/len(expected_r))
+
+    # Use minimize function to solve optimization problem
+    result = minimize(negative_Sharpe, x0, method="SLSQP", bounds=bounds, constraints=constraints)
+
+    # Return the objective value (risk) and the portfolio weights
+    return {"max_Sharpe_Ratio": -result.fun, "weights": result.x}
